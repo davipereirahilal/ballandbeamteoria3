@@ -1,0 +1,133 @@
+#include <SoftwareSerial.h>
+#include <string.h>
+#include <Servo.h>
+#include <Time.h>
+#include "Adafruit_VL53L0X.h"
+#include <HCSR04.h>
+
+Adafruit_VL53L0X lox = Adafruit_VL53L0X();
+
+#define Angulo_maximo 66
+#define Angulo_minimo -66
+#define Angulo_maximo_radianos 1.151
+#define Angulo_minimo_radianos -1.151
+#define Tempo_amostragem 0.05
+
+unsigned long tempo;
+Servo servo;
+
+const int Pino_entrada_2 = 3;
+const int Pino_saida_2 = 6;
+HCSR04 hc(6, 3);
+double distancia_atual_cubo, distancia_anterior_cubo;
+double distancia_atual_bola, distancia_anterior_bola;
+double error;
+double P, I, D, U;
+double I_anterior = 0, U_anterior = 0, D_anterior = 0;
+void mover_servo(int);
+void informavalores(void);
+
+int x = 45;
+int y = 0;
+float Kp = 0;
+float Ki = 0;
+float Kd = 0;
+int angulo;
+char letra;
+
+boolean Saturacao = false;
+String valor_kp_ki_kd = "";
+
+void setup() {
+  Serial.begin(9600);
+   while (! Serial) {
+    delay(1);
+  }
+  
+  Serial.println("Adafruit VL53L0X test");
+  if (!lox.begin()) {
+    Serial.println(F("Failed to boot VL53L0X"));
+    while(1);
+  }
+
+  servo.attach(9);
+
+  delay(500);
+
+  mover_servo(60);
+
+  distancia_atual_bola = 0.20;
+  distancia_atual_cubo = 0.01f * hc.dist();
+
+  delay(500);
+}
+
+void loop() {
+  tempo = millis();
+  VL53L0X_RangingMeasurementData_t distancia;
+  lox.rangingTest(&distancia, false);
+
+  distancia_atual_cubo = 0.20
+
+  delay(2);
+
+  distancia_atual_bola = 0.001f * distancia.RangeMilliMeter ;
+  if ( distancia_atual_bola < 0) {
+     distancia_atual_bola =  0;
+  } else if ( distancia_atual_bola > 0.37) {
+    distancia_atual_bola = 0.37;
+  }
+  delay(2);
+  distancia_atual_bola = 0.57 * distancia_atual_bola + 0.43 * distancia_anterior_bola;
+  delay (2);
+
+  error = round(100 * (distancia_atual_bola - distancia_atual_cubo)) * 0.01;
+
+  P = Kp * error;
+
+  if (!Saturacao) {
+    I = I_anterior + Tempo_amostragem * Ki * error;
+  }
+  D = (Kd / Tempo_amostragem) * (distancia_atual_bola - distancia_anterior_bola);
+  D = 0.56 * D + 0.44 * D_anterior;
+
+  U = P + I + round(100 * D) * 0.01;
+
+  if (U < Angulo_minimo_radianos) {
+    U = Angulo_minimo_radianos;
+    Saturacao = true;
+  } else if (U > Angulo_maximo_radianos) {
+    U = Angulo_maximo_radianos;
+    Saturacao = true;
+  } else {
+    Saturacao = false;
+  }
+
+  U = round(U * 180 / M_PI);
+  U = map(U, Angulo_minimo, Angulo_maximo, -15, 117);
+
+  if (U < 50 || U > 55 || abs(error) > 0.02) {
+    mover_servo(round(U));
+  }
+  delay(42);
+  I_anterior = I;
+  D_anterior = D;
+  distancia_anterior_bola = distancia_atual_bola;
+  distancia_anterior_cubo = distancia_atual_cubo;
+  Serial.print(x);
+  Serial.print(",");
+  Serial.print(tempo);
+  Serial.print(",");
+  Serial.print(distancia_atual_bola *100);
+  Serial.print(",");
+  Serial.print(distancia_atual_cubo* 100);
+  Serial.print(",");
+  Serial.print(U);
+  Serial.print(",");
+  Serial.println(y);
+  
+}
+void mover_servo(int u) {
+
+  servo.write(u - map(u, 30, 150, 14, 3));
+}
